@@ -35,10 +35,10 @@ namespace BuildMonitor
 			InitializeComponent();
 			SetupUsers();
 			Stream greenBallStream =
-				Assembly.GetExecutingAssembly().GetManifestResourceStream("CCTfsWrapper.Images.GreenBall.gif");
-			Stream redBallStream = Assembly.GetExecutingAssembly().GetManifestResourceStream("CCTfsWrapper.Images.RedBall.gif");
+				Assembly.GetExecutingAssembly().GetManifestResourceStream("BuildMonitor.Images.GreenBall.gif");
+            Stream redBallStream = Assembly.GetExecutingAssembly().GetManifestResourceStream("BuildMonitor.Images.RedBall.gif");
 			Stream yellowBallStream =
-				Assembly.GetExecutingAssembly().GetManifestResourceStream("CCTfsWrapper.Images.YellowBall.ico");
+                Assembly.GetExecutingAssembly().GetManifestResourceStream("BuildMonitor.Images.YellowBall.ico");
 			ImageList imageList = new ImageList();
 			imageList.Images.Add(Image.FromStream(greenBallStream));
 			imageList.Images.Add(Image.FromStream(yellowBallStream));
