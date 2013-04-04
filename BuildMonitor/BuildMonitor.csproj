@@ -136,6 +136,7 @@
       <DependentUpon>SelectBuildsForm.cs</DependentUpon>
     </Compile>
     <Compile Include="Domain\ServerBuild.cs" />
+    <Compile Include="Services\ResourceManager.cs" />
     <EmbeddedResource Include="BuildStatusForm.resx">
       <DependentUpon>BuildStatusForm.cs</DependentUpon>
     </EmbeddedResource>

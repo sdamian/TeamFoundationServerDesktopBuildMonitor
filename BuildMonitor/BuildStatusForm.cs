@@ -10,6 +10,7 @@ using System.Threading;
 using System.Windows.Forms;
 using BuildMonitor.Domain;
 using BuildMonitor.Plugin;
+using BuildMonitor.Services;
 using Microsoft.TeamFoundation.Build.Client;
 using Microsoft.TeamFoundation.Client;
 using Microsoft.Win32;
@@ -23,20 +24,14 @@ namespace BuildMonitor
         private readonly List<ServerBuild> serverBuilds = new List<ServerBuild>();
         private ImageIndex lastBuildStatus;
         private Thread monitorThread;
+        private readonly IResourceManager resourceManager;
 
-        /// <exception cref="NullReferenceException">One of the Resource Icons is null.</exception>
         public BuildStatusForm()
         {
+            resourceManager = new ResourceManager();
             InitializeComponent();
-            var greenBallStream = Assembly.GetExecutingAssembly().GetManifestResourceStream("BuildMonitor.Images.GreenBall.gif");
-            var redBallStream = Assembly.GetExecutingAssembly().GetManifestResourceStream("BuildMonitor.Images.RedBall.gif");
-            var yellowBallStream = Assembly.GetExecutingAssembly().GetManifestResourceStream("BuildMonitor.Images.YellowBall.ico");
             var imageList = new ImageList();
-            if (greenBallStream == null || redBallStream == null || yellowBallStream == null)
-            {
-                throw new NullReferenceException("One of the Resource Icons is null.");
-            }
-            imageList.Images.AddRange(new[] { Image.FromStream(greenBallStream), Image.FromStream(yellowBallStream), Image.FromStream(redBallStream) });
+            imageList.Images.AddRange(resourceManager.GetIcons().ToArray());
             BuildListView.SmallImageList = imageList;
 
             GetBuildsFromRegistry();
