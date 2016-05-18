@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO.IsolatedStorage;
 using System.Windows.Forms;
 using BuildMonitor.Domain;
 using CCTfsWrapper;
