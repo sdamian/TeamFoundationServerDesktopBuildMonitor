@@ -1,55 +1,46 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
-using System.Configuration;
 using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Text;
 using System.Threading;
 using System.Windows.Forms;
-using System.Xml.Serialization;
 using BuildMonitor.Domain;
 using BuildMonitor.Plugin;
 using BuildMonitor.Properties;
 using BuildMonitor.Services;
 using Microsoft.TeamFoundation.Build.Client;
 using Microsoft.TeamFoundation.Client;
-using Microsoft.Win32;
-using Tools;
 using BuildStatus = Microsoft.TeamFoundation.Build.Client.BuildStatus;
 
 namespace BuildMonitor
 {
     public partial class BuildStatusForm : Form
     {
-        private readonly List<ServerBuild> serverBuilds = new List<ServerBuild>();
-        private ImageIndex lastBuildStatus;
-        private Thread monitorThread;
-        private readonly IResourceManager resourceManager;
+        private readonly IResourceManager _resourceManager;
+        private readonly List<ServerBuild> _serverBuilds = new List<ServerBuild>();
+        private ImageIndex _lastBuildStatus;
+        private Thread _monitorThread;
 
         public BuildStatusForm()
         {
-            resourceManager = new ResourceManager();
+            _resourceManager = new ResourceManager();
             InitializeComponent();
             var imageList = new ImageList();
-            imageList.Images.AddRange(resourceManager.GetIcons().ToArray());
+            imageList.Images.AddRange(_resourceManager.GetIcons().ToArray());
             BuildListView.SmallImageList = imageList;
 
             if (Settings.Default.Builds != null)
             {
-                serverBuilds.AddRange(Settings.Default.Builds);
+                _serverBuilds.AddRange(Settings.Default.Builds);
             }
             MonitorBuilds();
         }
 
         [Import]
         public IEnumerable<AbstractNotifier> Notifiers { get; set; }
-
-        private delegate void AddItemCallback(ListViewItem listViewItem);
-
-        private delegate void ClearItemsCallback();
 
         private static ImageIndex GetImageIndex(BuildStatus buildStatus)
         {
@@ -64,49 +55,21 @@ namespace BuildMonitor
             }
         }
 
-        private enum ImageIndex
-        {
-            Green = 0, 
-            Yellow = 1, 
-            Red = 2
-        }
-
-        private static void SetRadiatorBuildStatusColor(ImageIndex overallImageIndex)
-        {
-            var userName = ConfigurationManager.AppSettings["RadiatorUserName"];
-            var domain = ConfigurationManager.AppSettings["RadiatorDomain"];
-            var password = ConfigurationManager.AppSettings["RadiatorPassword"];
-            using (new Impersonator(userName, domain, password))
-            {
-                var buildStatusColorCss = string.Format(".buildStatusColor {{ background-color: {0}; }}",
-                    overallImageIndex);
-
-                var cssFilePath = ConfigurationManager.AppSettings["RadiatorCssFilePath"];
-                var cssFileContents = File.ReadAllText(cssFilePath);
-
-                cssFileContents = cssFileContents.Replace(".buildStatusColor { background-color: Red; }", buildStatusColorCss);
-                cssFileContents = cssFileContents.Replace(".buildStatusColor { background-color: Yellow; }", buildStatusColorCss);
-                cssFileContents = cssFileContents.Replace(".buildStatusColor { background-color: Green; }", buildStatusColorCss);
-
-                File.WriteAllText(cssFilePath, cssFileContents);
-            }
-        }
-
         private void AddBuilds(IEnumerable<ServerBuild> serverBuilds)
         {
             if (serverBuilds == null)
             {
                 return;
             }
-            foreach (var serverBuild in serverBuilds)
+            foreach (ServerBuild serverBuild in serverBuilds)
             {
-                var count =
-                    (from sb in this.serverBuilds
-                     where sb.ServerUrl == serverBuild.ServerUrl && sb.BuildUrl == serverBuild.BuildUrl
-                     select sb).Count();
+                int count =
+                    (from sb in this._serverBuilds
+                        where sb.ServerUrl == serverBuild.ServerUrl && sb.BuildUrl == serverBuild.BuildUrl
+                        select sb).Count();
                 if (count == 0)
                 {
-                    this.serverBuilds.Add(serverBuild);
+                    this._serverBuilds.Add(serverBuild);
                 }
             }
         }
@@ -116,7 +79,7 @@ namespace BuildMonitor
             if (BuildListView.InvokeRequired)
             {
                 AddItemCallback d = AddItem;
-                Invoke(d, new object[] { listViewItem });
+                Invoke(d, listViewItem);
             }
             else
             {
@@ -127,16 +90,16 @@ namespace BuildMonitor
         private void AddItems(IEnumerable<ListViewItem> listViewItems)
         {
             // this.BuildListView.BeginUpdate();
-            foreach (var item in listViewItems)
+            foreach (ListViewItem item in listViewItems)
             {
-                this.AddItem(item);
+                AddItem(item);
             }
             // this.BuildListView.EndUpdate();
         }
 
         private void AnnounceCulprit(string culprit)
         {
-            foreach (var notifier in Notifiers)
+            foreach (AbstractNotifier notifier in Notifiers)
             {
                 notifier.AnnounceBrokenBuild("Global", culprit, DateTime.Now);
             }
@@ -144,13 +107,13 @@ namespace BuildMonitor
 
         private void BuildListView_KeyDown(object sender, KeyEventArgs e)
         {
-            this.monitorThread.Abort();
+            _monitorThread.Abort();
             if (e.KeyCode == Keys.Delete)
             {
                 foreach (ListViewItem selectedItem in BuildListView.SelectedItems)
                 {
-                    var selectedServerBuild = (ServerBuild)selectedItem.Tag;
-                    this.serverBuilds.Remove(selectedServerBuild);
+                    var selectedServerBuild = (ServerBuild) selectedItem.Tag;
+                    _serverBuilds.Remove(selectedServerBuild);
                 }
             }
             SaveBuildList();
@@ -162,7 +125,7 @@ namespace BuildMonitor
             if (BuildListView.InvokeRequired)
             {
                 ClearItemsCallback d = ClearItems;
-                Invoke(d, new object[] { });
+                Invoke(d, new object[] {});
             }
             else
             {
@@ -172,7 +135,8 @@ namespace BuildMonitor
 
         private IBuildServer GetBuildServer(string serverUri)
         {
-            var teamProjectCollection = TfsTeamProjectCollectionFactory.GetTeamProjectCollection(new Uri(serverUri));
+            TfsTeamProjectCollection teamProjectCollection =
+                TfsTeamProjectCollectionFactory.GetTeamProjectCollection(new Uri(serverUri));
             var buildServer = teamProjectCollection.GetService<IBuildServer>();
             return buildServer;
         }
@@ -191,24 +155,15 @@ namespace BuildMonitor
 
         private void MonitorBuilds()
         {
-            this.monitorThread = new Thread(ShowBuilds);
-            this.monitorThread.IsBackground = true;
-            this.monitorThread.Start();
+            _monitorThread = new Thread(ShowBuilds);
+            _monitorThread.IsBackground = true;
+            _monitorThread.Start();
         }
 
         private void SaveBuildList()
         {
-            Settings settings = Settings.Default;
-            settings.Builds = new ServerBuildCollection(serverBuilds);
-
-            XmlSerializer serializer = new XmlSerializer(typeof(ServerBuildCollection));
-
-            var stringBuilder = new StringBuilder();
-            var stringWriter = new StringWriter(stringBuilder);
-            serializer.Serialize(stringWriter, settings.Builds);
-            var xml = stringBuilder.ToString();
-
-            settings.Save();
+            Settings.Default.Builds = new ServerBuildCollection(_serverBuilds);
+            Settings.Default.Save();
         }
 
         private void SetSystemTrayIcon(ImageIndex imageIndex)
@@ -226,7 +181,7 @@ namespace BuildMonitor
                     imageResourceString = "BuildMonitor.Images.RedBall.ico";
                     break;
             }
-            var iconStream = Assembly.GetExecutingAssembly().GetManifestResourceStream(imageResourceString);
+            Stream iconStream = Assembly.GetExecutingAssembly().GetManifestResourceStream(imageResourceString);
 
             systemTrayNotifyIcon.Icon = new Icon(iconStream);
         }
@@ -234,26 +189,28 @@ namespace BuildMonitor
         private void ShowBuilds()
         {
             const int LoopSpeed = 10000;
-            
+
             while (true)
             {
                 try
                 {
                     ClearItems();
                     var overallImageIndex = ImageIndex.Green;
-                    var culprit = string.Empty;
+                    string culprit = string.Empty;
 
                     var listViewItems = new List<ListViewItem>();
 
-                    foreach (var serverBuild in this.serverBuilds)
+                    foreach (ServerBuild serverBuild in _serverBuilds)
                     {
-                        var buildServer = GetBuildServer(serverBuild.ServerUrl.ToString());
-                        var buildDefinition = buildServer.QueryBuildDefinitionsByUri(new[] { new Uri(serverBuild.BuildUrl) })[0];
-                        
-                        var viewModel = new BuildInformationListViewModel { Name = buildDefinition.Name };
+                        IBuildServer buildServer = GetBuildServer(serverBuild.ServerUrl);
+                        IBuildDefinition buildDefinition =
+                            buildServer.QueryBuildDefinitionsByUri(new[] {new Uri(serverBuild.BuildUrl)})[0];
 
-                        var lastBuildDetails =
-                            buildServer.QueryBuildsByUri(new[] { buildDefinition.LastBuildUri }, null, QueryOptions.None)[0];
+                        var viewModel = new BuildInformationListViewModel {Name = buildDefinition.Name};
+
+                        IBuildDetail lastBuildDetails =
+                            buildServer.QueryBuildsByUri(new[] {buildDefinition.LastBuildUri}, null, QueryOptions.None)[
+                                0];
 
                         if (lastBuildDetails != null)
                         {
@@ -262,8 +219,13 @@ namespace BuildMonitor
                             viewModel.SourceVersion = lastBuildDetails.SourceGetVersion;
                         }
 
-                        var imageIndex = lastBuildDetails == null ? ImageIndex.Red : GetImageIndex(lastBuildDetails.Status);
-                        var listViewItem = new ListViewItem(viewModel.ToStringArray(), (int)imageIndex) { Tag = serverBuild };
+                        ImageIndex imageIndex = lastBuildDetails == null
+                            ? ImageIndex.Red
+                            : GetImageIndex(lastBuildDetails.Status);
+                        var listViewItem = new ListViewItem(viewModel.ToStringArray(), (int) imageIndex)
+                        {
+                            Tag = serverBuild
+                        };
                         listViewItems.Add(listViewItem);
                         if (imageIndex == ImageIndex.Red)
                         {
@@ -277,11 +239,10 @@ namespace BuildMonitor
                     }
                     AddItems(listViewItems);
                     SetSystemTrayIcon(overallImageIndex);
-                    if (overallImageIndex != this.lastBuildStatus)
+                    if (overallImageIndex != _lastBuildStatus)
                     {
-                        SetRadiatorBuildStatusColor(overallImageIndex);
                         AnnounceCulprit(culprit);
-                        this.lastBuildStatus = overallImageIndex;
+                        _lastBuildStatus = overallImageIndex;
                     }
                 }
                 catch (Exception exception)
@@ -294,7 +255,7 @@ namespace BuildMonitor
 
         private void btnAddBuilds_Click(object sender, EventArgs e)
         {
-            this.monitorThread.Abort();
+            _monitorThread.Abort();
             var selectBuildsForm = new SelectBuildsForm();
             selectBuildsForm.ShowDialog();
             AddBuilds(selectBuildsForm.SelectedServerBuilds);
@@ -309,7 +270,17 @@ namespace BuildMonitor
 
         private void BuildListView_SelectedIndexChanged(object sender, EventArgs e)
         {
+        }
 
+        private delegate void AddItemCallback(ListViewItem listViewItem);
+
+        private delegate void ClearItemsCallback();
+
+        private enum ImageIndex
+        {
+            Green = 0,
+            Yellow = 1,
+            Red = 2
         }
     }
 }
