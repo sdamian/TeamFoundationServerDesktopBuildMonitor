@@ -192,6 +192,7 @@ namespace BuildMonitor
         private void MonitorBuilds()
         {
             this.monitorThread = new Thread(ShowBuilds);
+            this.monitorThread.IsBackground = true;
             this.monitorThread.Start();
         }
 
