@@ -110,6 +110,7 @@
     <Compile Include="Domain\BuildInformationListViewModel.cs" />
     <Compile Include="Domain\Monitor\IContinousIntegrationServerMonitor.cs" />
     <Compile Include="Domain\Monitor\TFSMonitor.cs" />
+    <Compile Include="Domain\ServerBuildCollection.cs" />
     <Compile Include="Impersonator.cs" />
     <Compile Include="InputBox.cs">
       <SubType>Form</SubType>

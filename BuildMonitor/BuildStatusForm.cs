@@ -6,10 +6,13 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 using System.Threading;
 using System.Windows.Forms;
+using System.Xml.Serialization;
 using BuildMonitor.Domain;
 using BuildMonitor.Plugin;
+using BuildMonitor.Properties;
 using BuildMonitor.Services;
 using Microsoft.TeamFoundation.Build.Client;
 using Microsoft.TeamFoundation.Client;
@@ -34,7 +37,10 @@ namespace BuildMonitor
             imageList.Images.AddRange(resourceManager.GetIcons().ToArray());
             BuildListView.SmallImageList = imageList;
 
-            GetBuildsFromRegistry();
+            if (Settings.Default.Builds != null)
+            {
+                serverBuilds.AddRange(Settings.Default.Builds);
+            }
             MonitorBuilds();
         }
 
@@ -67,27 +73,22 @@ namespace BuildMonitor
 
         private static void SetRadiatorBuildStatusColor(ImageIndex overallImageIndex)
         {
-            try
+            var userName = ConfigurationManager.AppSettings["RadiatorUserName"];
+            var domain = ConfigurationManager.AppSettings["RadiatorDomain"];
+            var password = ConfigurationManager.AppSettings["RadiatorPassword"];
+            using (new Impersonator(userName, domain, password))
             {
-                var userName = ConfigurationManager.AppSettings["RadiatorUserName"];
-                var domain = ConfigurationManager.AppSettings["RadiatorDomain"];
-                var password = ConfigurationManager.AppSettings["RadiatorPassword"];
-                using (new Impersonator(userName, domain, password))
-                {
-                    var buildStatusColorCss = string.Format(".buildStatusColor {{ background-color: {0}; }}", overallImageIndex);
+                var buildStatusColorCss = string.Format(".buildStatusColor {{ background-color: {0}; }}",
+                    overallImageIndex);
 
-                    var cssFilePath = ConfigurationManager.AppSettings["RadiatorCssFilePath"];
-                    var cssFileContents = File.ReadAllText(cssFilePath);
+                var cssFilePath = ConfigurationManager.AppSettings["RadiatorCssFilePath"];
+                var cssFileContents = File.ReadAllText(cssFilePath);
 
-                    cssFileContents = cssFileContents.Replace(".buildStatusColor { background-color: Red; }", buildStatusColorCss);
-                    cssFileContents = cssFileContents.Replace(".buildStatusColor { background-color: Yellow; }", buildStatusColorCss);
-                    cssFileContents = cssFileContents.Replace(".buildStatusColor { background-color: Green; }", buildStatusColorCss);
+                cssFileContents = cssFileContents.Replace(".buildStatusColor { background-color: Red; }", buildStatusColorCss);
+                cssFileContents = cssFileContents.Replace(".buildStatusColor { background-color: Yellow; }", buildStatusColorCss);
+                cssFileContents = cssFileContents.Replace(".buildStatusColor { background-color: Green; }", buildStatusColorCss);
 
-                    File.WriteAllText(cssFilePath, cssFileContents);
-                }
-            }
-            catch
-            {
+                File.WriteAllText(cssFilePath, cssFileContents);
             }
         }
 
@@ -101,7 +102,7 @@ namespace BuildMonitor
             {
                 var count =
                     (from sb in this.serverBuilds
-                     where sb.ServerUri == serverBuild.ServerUri && sb.BuildUri == serverBuild.BuildUri
+                     where sb.ServerUrl == serverBuild.ServerUrl && sb.BuildUrl == serverBuild.BuildUrl
                      select sb).Count();
                 if (count == 0)
                 {
@@ -176,23 +177,6 @@ namespace BuildMonitor
             return buildServer;
         }
 
-        private void GetBuildsFromRegistry()
-        {
-            var serverBuildsKeyName = string.Format("SOFTWARE\\{0}\\ServerBuilds", Application.ProductName);
-            var serverBuildsKey = Registry.LocalMachine.OpenSubKey(serverBuildsKeyName);
-            if (serverBuildsKey != null)
-            {
-                foreach (var serverKeyName in serverBuildsKey.GetSubKeyNames())
-                {
-                    var serverBuild = new ServerBuild();
-                    var serverBuildKey = serverBuildsKey.OpenSubKey(serverKeyName);
-                    serverBuild.ServerUri = new Uri(serverBuildKey.GetValue("ServerUri").ToString());
-                    serverBuild.BuildUri = new Uri(serverBuildKey.GetValue("BuildUri").ToString());
-                    this.serverBuilds.Add(serverBuild);
-                }
-            }
-        }
-
         private void ListBuildsForm_Resize(object sender, EventArgs e)
         {
             if (WindowState == FormWindowState.Minimized)
@@ -213,22 +197,17 @@ namespace BuildMonitor
 
         private void SaveBuildList()
         {
-            var serverBuildsKey = "SOFTWARE\\" + Application.ProductName + "\\ServerBuilds";
-            if (Registry.LocalMachine.OpenSubKey(serverBuildsKey) != null)
-            {
-                Registry.LocalMachine.DeleteSubKeyTree(serverBuildsKey);
-            }
-            Registry.LocalMachine.CreateSubKey(serverBuildsKey);
+            Settings settings = Settings.Default;
+            settings.Builds = new ServerBuildCollection(serverBuilds);
 
-            var count = 0;
-            foreach (var serverBuild in this.serverBuilds)
-            {
-                var serverBuildKeyName = string.Format("SOFTWARE\\{0}\\ServerBuilds\\ServerBuild{1}", Application.ProductName, count);
-                var serverBuildKey = Registry.LocalMachine.CreateSubKey(serverBuildKeyName);
-                serverBuildKey.SetValue("ServerUri", serverBuild.ServerUri.ToString());
-                serverBuildKey.SetValue("BuildUri", serverBuild.BuildUri.ToString());
-                count++;
-            }
+            XmlSerializer serializer = new XmlSerializer(typeof(ServerBuildCollection));
+
+            var stringBuilder = new StringBuilder();
+            var stringWriter = new StringWriter(stringBuilder);
+            serializer.Serialize(stringWriter, settings.Builds);
+            var xml = stringBuilder.ToString();
+
+            settings.Save();
         }
 
         private void SetSystemTrayIcon(ImageIndex imageIndex)
@@ -267,8 +246,8 @@ namespace BuildMonitor
 
                     foreach (var serverBuild in this.serverBuilds)
                     {
-                        var buildServer = GetBuildServer(serverBuild.ServerUri.ToString());
-                        var buildDefinition = buildServer.QueryBuildDefinitionsByUri(new[] { serverBuild.BuildUri })[0];
+                        var buildServer = GetBuildServer(serverBuild.ServerUrl.ToString());
+                        var buildDefinition = buildServer.QueryBuildDefinitionsByUri(new[] { new Uri(serverBuild.BuildUrl) })[0];
                         
                         var viewModel = new BuildInformationListViewModel { Name = buildDefinition.Name };
 

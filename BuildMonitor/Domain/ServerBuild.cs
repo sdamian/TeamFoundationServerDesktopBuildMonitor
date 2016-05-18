@@ -2,19 +2,20 @@
 
 namespace BuildMonitor.Domain
 {
+    [Serializable]
 	public class ServerBuild
 	{
-		public ServerBuild(Uri serverUri, Uri buildUri)
+		public ServerBuild(string serverUrl, string buildUrl)
 		{
-			ServerUri = serverUri;
-			BuildUri = buildUri;
+			ServerUrl = serverUrl;
+			BuildUrl = buildUrl;
 		}
 
 		public ServerBuild()
 		{
 		}
 
-		public Uri ServerUri { get; set; }
-		public Uri BuildUri { get; set; }
+		public string ServerUrl { get; set; }
+		public string BuildUrl { get; set; }
 	}
 }

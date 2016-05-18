@@ -1,22 +1,18 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO.IsolatedStorage;
 using System.Windows.Forms;
 using BuildMonitor.Domain;
+using BuildMonitor.Properties;
 using CCTfsWrapper;
 using Microsoft.TeamFoundation.Build.Client;
 using Microsoft.TeamFoundation.Client;
 using Microsoft.TeamFoundation.Server;
-using Microsoft.Win32;
 
 namespace BuildMonitor
 {
     public partial class SelectBuildsForm : Form
     {
-        private const string DEFAULT_PROJECT_NAME_KEY = "DefaultProject";
-        private const string DEFAULT_SERVER_URI_KEY = "DefaultServerUri";
-        private readonly string _baseRegistryKey = "SOFTWARE\\" + Application.ProductName;
-        private Dictionary<string, Uri> _buildDictionary;
+        private Dictionary<string, string> _buildDictionary;
 
         public SelectBuildsForm()
         {
@@ -27,13 +23,11 @@ namespace BuildMonitor
 
         protected override void OnLoad(EventArgs e)
         {
-            var serverUriKey = Registry.LocalMachine.OpenSubKey(this._baseRegistryKey);
-            this.lblServerUri.Text = serverUriKey == null ? String.Empty : serverUriKey.GetValue(DEFAULT_SERVER_URI_KEY).ToString();
+            lblServerUri.Text = Settings.Default.ServerUrl;
             if (this.lblServerUri.Text != string.Empty)
             {
                 this.PopulateProjects();
-                var projectUriKey = Registry.LocalMachine.OpenSubKey(this._baseRegistryKey);
-                var defaultProject = projectUriKey == null ? String.Empty : projectUriKey.GetValue(DEFAULT_PROJECT_NAME_KEY).ToString();
+                var defaultProject = Settings.Default.ProjectName;
                 this.TeamProjectDropDown.SelectedText = defaultProject;
                 this.ShowBuilds(defaultProject);
             }
@@ -45,7 +39,7 @@ namespace BuildMonitor
             this.SelectedServerBuilds = new List<ServerBuild>();
             foreach (ListViewItem selectedItem in this.BuildsListView.SelectedItems)
             {
-                this.SelectedServerBuilds.Add(new ServerBuild(new Uri(this.lblServerUri.Text), this._buildDictionary[selectedItem.Text]));
+                this.SelectedServerBuilds.Add(new ServerBuild(this.lblServerUri.Text, this._buildDictionary[selectedItem.Text]));
             }
             this.Close();
         }
@@ -55,8 +49,7 @@ namespace BuildMonitor
             var serverUri = InputBox.Show("Server Uri:", "Enter Server Uri");
             if (!string.IsNullOrEmpty(serverUri))
             {
-                Registry.LocalMachine.CreateSubKey(this._baseRegistryKey).SetValue(DEFAULT_SERVER_URI_KEY, serverUri);
-
+                Settings.Default.ServerUrl = serverUri;
                 this.lblServerUri.Text = serverUri;
                 this.BuildsListView.Clear();
                 this.PopulateProjects();
@@ -84,24 +77,19 @@ namespace BuildMonitor
 
         private void ShowBuilds(string projectName)
         {
-            try
+            this.BuildsListView.Items.Clear();
+            var buildServer = this.GetBuildServer();
+            var buildDefinitions = buildServer.QueryBuildDefinitions(projectName);
+            this._buildDictionary = new Dictionary<string, string>();
+            foreach (var buildDetail in buildDefinitions)
             {
-                this.BuildsListView.Items.Clear();
-                var buildServer = this.GetBuildServer();
-                var buildDefinitions = buildServer.QueryBuildDefinitions(projectName);
-                this._buildDictionary = new Dictionary<string, Uri>();
-                foreach (var buildDetail in buildDefinitions)
-                {
-                    this._buildDictionary.Add(buildDetail.Name, buildDetail.Uri);
-                    var buildInformation = new string[2];
-                    buildInformation[0] = buildDetail.Name;
-                    buildInformation[1] = buildDetail.Uri.ToString();
-                    this.BuildsListView.Items.Add(buildDetail.Name);
-                }
+                this._buildDictionary.Add(buildDetail.Name, buildDetail.Uri.ToString());
+                var buildInformation = new string[2];
+                buildInformation[0] = buildDetail.Name;
+                buildInformation[1] = buildDetail.Uri.ToString();
+                this.BuildsListView.Items.Add(buildDetail.Name);
             }
-            catch (Exception ex)
-            {
-            }
+
         }
 
         private void ShowBuilds()
@@ -111,8 +99,7 @@ namespace BuildMonitor
 
         private void TeamProjectDropDown_SelectedIndexChanged(object sender, EventArgs e)
         {
-            Registry.LocalMachine.CreateSubKey("SOFTWARE\\" + Application.ProductName)
-                    .SetValue(DEFAULT_PROJECT_NAME_KEY, this.TeamProjectDropDown.SelectedItem.ToString());
+            Settings.Default.ProjectName = this.TeamProjectDropDown.SelectedItem.ToString();
             this.ShowBuilds();
         }
 
